@@ -1,0 +1,56 @@
+﻿version: "3"
+
+vars:
+  ARTIFACT_PATH: ./artifact/lambda.zip
+  LOCALSTACK_ENDPOINT: http://localhost:4566
+  FUNCTION_NAME: sqs-event-lambda
+  FUNCTION_ENTRY: sqs-event-lambda::sqs_event_lambda.Function::FunctionHandler
+  AWS_REGION: ap-northeast-1
+
+tasks:
+  quick-start:
+    cmds:
+      - docker-compose up -d
+      - timeout 3
+      - task: local-lambda-deploy
+      - timeout 3
+      - task: local-lambda-invoke
+    desc: "[local] 快速開始"
+  local-lambda-get:
+    cmd: aws lambda get-function --function-name {{.FUNCTION_NAME}} --endpoint-url={{.LOCALSTACK_ENDPOINT}} --region={{.AWS_REGION}}
+    desc: "[local] 取得Lambda"
+  local-lambda-package:
+    cmd: dotnet lambda package -o {{.ARTIFACT_PATH}}
+    desc: "[local] 打包Lambda"
+  local-lambda-deploy:
+    deps: [local-lambda-package]
+    cmds:
+      - AWS_PAGER=""  aws lambda delete-function
+        --function-name {{.FUNCTION_NAME}}
+        --region {{.AWS_REGION}} 
+        --endpoint-url={{.LOCALSTACK_ENDPOINT}} || true
+
+      - AWS_PAGER="" aws lambda create-function
+        --function-name {{.FUNCTION_NAME}}
+        --zip-file fileb://{{.ARTIFACT_PATH}}
+        --handler {{.FUNCTION_ENTRY}}
+        --runtime dotnet6
+        --memory-size 512
+        --memory-size 512
+        --region {{.AWS_REGION}}
+        --endpoint-url={{.LOCALSTACK_ENDPOINT}} 
+        --timeout 900
+        --role arn:aws:iam::000000000000:role/{{.ARTIFACT_PATH}}
+    desc: "[local] 部屬Lambda"
+  local-lambda-invoke:
+    cmds:
+      - aws lambda invoke
+        --function-name {{.FUNCTION_NAME}}
+        --invocation-type Event
+        --cli-binary-format raw-in-base64-out
+        --log-type Tail
+        --payload fileb://event.json
+        --endpoint-url={{.LOCALSTACK_ENDPOINT}}
+        --region={{.AWS_REGION}}
+        out.txt
+    desc: "[local] 執行Lambda"
